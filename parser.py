@@ -90,6 +90,7 @@ _STMT_START_TOKENS = {
     "IF",
     "WHILE",
     "PRINT",
+    "LBRACE",
 }
 
 _EXPR_START_TOKENS = {
@@ -169,6 +170,8 @@ class Parser:
             return nxt == "LPAREN"
         if t in ("INT", "FLOAT"):
             return nxt == "IDENTIFIER"
+        if t == "LBRACE":
+            return True
         return False
 
     def _synchronise(self):
@@ -279,6 +282,8 @@ class Parser:
                 node.add(self.parse_while_stmt())
             elif tok.type == "PRINT":
                 node.add(self.parse_print_stmt())
+            elif tok.type == "LBRACE":
+                node.add(self.parse_block())
             else:
                 line, col = self._error_location()
                 raise ParseError(
@@ -443,9 +448,12 @@ class Parser:
         node = ParseNode("rel_expr")
         self._assert_expr_start()
         node.add(self.parse_expr())
-        node.add(self.parse_rel_op())
-        self._assert_expr_start()
-        node.add(self.parse_expr())
+        # rel_op is OPTIONAL: bare expressions like  if (b)  pass the parser
+        # and are caught by the semantic analyser instead (invalid bool condition)
+        if self.current.type in ("LT", "GT", "LEQ", "GEQ", "EQ", "NEQ"):
+            node.add(self.parse_rel_op())
+            self._assert_expr_start()
+            node.add(self.parse_expr())
         return node
 
     def parse_rel_op(self) -> ParseNode:
@@ -1370,8 +1378,8 @@ def _sr_try_reduce(sr: _SRStack, la: str, desc_holder: list) -> bool:
     # O. Block -> stmt
     if sr.check(0,"block"):
         dominated = False
-        for i in range(sr.top - 1, -1, -1):
-            s = sr.sym_at(sr.top - i)
+        for offset in range(1, sr.top + 1):
+            s = sr.sym_at(offset)
             if s in ("IF","WHILE","ELSE"):
                 dominated = True; break
             if s == "LBRACE":
